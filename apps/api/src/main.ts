@@ -22,7 +22,8 @@ async function bootstrap() {
   const cfg = config();
   const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: false });
   configureApp(app);
-  app.enableCors({ origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173', credentials: true });
+  const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').split(',').map((s) => s.trim());
+  app.enableCors({ origin: origins, credentials: true });
   const doc = SwaggerModule.createDocument(
     app,
     new DocumentBuilder().setTitle('CommHub API').setDescription('Internal communication management API').setVersion('0.1.0').addBearerAuth().build(),

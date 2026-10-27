@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
+    "start:prod": "prisma migrate deploy && node dist/seed.js && node dist/main.js",
     "dev": "tsc -p tsconfig.build.json && node dist/main.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",

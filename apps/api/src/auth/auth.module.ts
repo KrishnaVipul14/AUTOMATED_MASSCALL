@@ -92,9 +92,13 @@ export class AuthService {
 }
 
 function setCookie(res: Response, token: string) {
+  const crossSite = Boolean(process.env.WEB_ORIGIN && !process.env.WEB_ORIGIN.includes('localhost'));
   res.cookie(COOKIE, token, {
-    httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production',
-    path: '/api/auth', maxAge: REFRESH_TTL_MS,
+    httpOnly: true,
+    sameSite: crossSite ? 'none' : 'strict',
+    secure: crossSite || process.env.NODE_ENV === 'production',
+    path: '/api/auth',
+    maxAge: REFRESH_TTL_MS,
   });
 }
 
