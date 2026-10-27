@@ -32,6 +32,15 @@ async function bootstrap() {
   app.enableShutdownHooks();
   await app.listen(cfg.PORT);
   Logger.log(`API listening on :${cfg.PORT} (provider mode: ${cfg.PROVIDER_MODE})`, 'Bootstrap');
+
+  // Optional embedded worker mode for zero-cost single-container free tiers (local/prod still supports separate apps/worker process).
+  if (process.env.EMBED_WORKER === 'true') {
+    const { startWorkerRuntime } = await import('@commhub/worker');
+    const rt = await startWorkerRuntime();
+    setInterval(() => void rt.publishOutboxOnce(), 1500);
+    setInterval(() => void rt.reconcileOnce(), 30_000);
+    Logger.log('Embedded BullMQ worker started (EMBED_WORKER=true)', 'Bootstrap');
+  }
 }
 
 if (require.main === module) void bootstrap();

@@ -2,6 +2,8 @@
   "name": "@commhub/worker",
   "version": "0.1.0",
   "private": true,
+  "main": "dist/worker.js",
+  "types": "dist/worker.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
