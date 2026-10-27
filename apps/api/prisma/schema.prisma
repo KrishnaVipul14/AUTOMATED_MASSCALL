@@ -1,0 +1,354 @@
+// PostgreSQL is the source of truth for every durable record.
+// Redis/BullMQ only carries transient job state.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  APPROVER
+  AUDITOR
+}
+
+enum Channel {
+  VOICE
+  SMS
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  PROCESSING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum RecipientStatus {
+  PENDING
+  QUEUED
+  /// Claimed by a worker; provider call in flight. Stale SUBMITTING rows are marked UNCERTAIN, never auto-retried.
+  SUBMITTING
+  SUBMITTED
+  PROVIDER_ACCEPTED
+  ANSWERED
+  COMPLETED
+  DELIVERED
+  FAILED
+  UNCERTAIN
+  SKIPPED_SUPPRESSED
+  CANCELLED
+}
+
+enum ImportStatus {
+  UPLOADED
+  PROCESSING
+  PREVIEW_READY
+  COMMITTED
+  FAILED
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean   @default(true)
+  mfaEnabled   Boolean   @default(false)
+  mfaSecret    String?
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  ip               String?
+
+  @@index([userId])
+}
+
+model Contact {
+  id            String       @id @default(uuid())
+  phoneE164     String       @unique
+  name          String?
+  source        String
+  lawfulBasis   String
+  consentAt     DateTime
+  allowVoice    Boolean      @default(true)
+  allowSms      Boolean      @default(true)
+  language      String?
+  importBatchId String?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  recipients    CampaignRecipient[]
+
+  @@index([source])
+}
+
+/// Suppression is keyed by phone number so it survives contact deletion.
+model Suppression {
+  id          String   @id @default(uuid())
+  phoneE164   String   @unique
+  reason      String
+  source      String
+  createdById String?
+  createdAt   DateTime @default(now())
+}
+
+model ImportBatch {
+  id            String       @id @default(uuid())
+  filename      String
+  source        String
+  lawfulBasis   String
+  status        ImportStatus @default(UPLOADED)
+  totalRows     Int          @default(0)
+  validRows     Int          @default(0)
+  invalidRows   Int          @default(0)
+  duplicateRows Int          @default(0)
+  suppressedRows Int         @default(0)
+  errors        Json         @default("[]")
+  preview       Json         @default("[]")
+  storageKey    String
+  createdById   String
+  createdAt     DateTime     @default(now())
+  committedAt   DateTime?
+  contacts      Contact[]
+}
+
+model AudioAsset {
+  id           String        @id @default(uuid())
+  title        String
+  filename     String
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
+  durationSec  Float?
+  status       ContentStatus @default(DRAFT)
+  createdById  String
+  reviewedById String?
+  reviewNote   String?
+  createdAt    DateTime      @default(now())
+  campaigns    Campaign[]
+}
+
+model SmsTemplate {
+  id           String        @id @default(uuid())
+  name         String
+  body         String
+  segments     Int
+  encoding     String
+  status       ContentStatus @default(DRAFT)
+  createdById  String
+  reviewedById String?
+  reviewNote   String?
+  createdAt    DateTime      @default(now())
+  campaigns    Campaign[]
+}
+
+model Campaign {
+  id              String         @id @default(uuid())
+  name            String
+  description     String?
+  channel         Channel
+  smsTemplateId   String?
+  smsTemplate     SmsTemplate?   @relation(fields: [smsTemplateId], references: [id])
+  audioAssetId    String?
+  audioAsset      AudioAsset?    @relation(fields: [audioAssetId], references: [id])
+  /// Permitted operational criteria only (e.g. contact source list). No sensitive traits.
+  audience        Json           @default("{}")
+  status          CampaignStatus @default(DRAFT)
+  createdById     String
+  approverId      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  scheduledAt     DateTime?
+  timezone        String         @default("Asia/Kolkata")
+  startedAt       DateTime?
+  completedAt     DateTime?
+  simulated       Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  recipients      CampaignRecipient[]
+  history         CampaignStatusHistory[]
+
+  @@index([status])
+}
+
+model CampaignStatusHistory {
+  id         String         @id @default(uuid())
+  campaignId String
+  campaign   Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  fromStatus CampaignStatus?
+  toStatus   CampaignStatus
+  actorId    String?
+  reason     String?
+  createdAt  DateTime       @default(now())
+
+  @@index([campaignId])
+}
+
+model CampaignRecipient {
+  id             String          @id @default(uuid())
+  campaignId     String
+  campaign       Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId      String?
+  contact        Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  phoneE164      String
+  status         RecipientStatus @default(PENDING)
+  idempotencyKey String          @unique
+  providerRef    String?
+  attempts       Int             @default(0)
+  lastError      String?
+  simulated      Boolean         @default(true)
+  submittedAt    DateTime?
+  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime        @default(now())
+
+  @@unique([campaignId, phoneE164])
+  @@index([campaignId, status])
+  @@index([providerRef])
+}
+
+model ProviderEvent {
+  id               String    @id @default(uuid())
+  provider         String
+  eventId          String
+  providerRef      String?
+  rawStatus        String?
+  normalisedStatus RecipientStatus?
+  payload          Json
+  applied          Boolean   @default(false)
+  error            String?
+  receivedAt       DateTime  @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model OutboxEvent {
+  id          String       @id @default(uuid())
+  type        String
+  payload     Json
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
+  lastError   String?
+  createdAt   DateTime     @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
+}
+
+model JobRecord {
+  id        String   @id @default(uuid())
+  queue     String
+  name      String
+  refId     String?
+  status    String
+  attempts  Int      @default(0)
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([queue, status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorEmail String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json     @default("{}")
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+model ProviderConfig {
+  id                String   @id @default(uuid())
+  channel           Channel
+  adapter           String
+  enabled           Boolean  @default(false)
+  mode              String   @default("MOCK")
+  ratePerSecond     Int      @default(5)
+  maxConcurrency    Int      @default(2)
+  approvalVerified  Boolean  @default(false)
+  approvalReference String?
+  capabilities      Json     @default("{}")
+  updatedAt         DateTime @updatedAt
+
+  @@unique([channel, adapter])
+}
+
+model ComplianceItem {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  label       String
+  description String?
+  required    Boolean   @default(true)
+  checked     Boolean   @default(false)
+  checkedById String?
+  checkedAt   DateTime?
+  note        String?
+}
+
+model UsageCost {
+  id             String   @id @default(uuid())
+  provider       String
+  campaignId     String?
+  channel        Channel
+  quantity       Int
+  unit           String
+  amount         Decimal  @db.Decimal(12, 4)
+  currency       String   @default("INR")
+  isEstimate     Boolean  @default(true)
+  periodStart    DateTime
+  periodEnd      DateTime
+  reconciliation String   @default("UNRECONCILED")
+  createdAt      DateTime @default(now())
+
+  @@index([campaignId])
+}

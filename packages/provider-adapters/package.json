@@ -1,0 +1,18 @@
+{
+    "name":  "@commhub/provider-adapters",
+    "version":  "0.1.0",
+    "private":  true,
+    "main":  "dist/index.js",
+    "types":  "dist/index.d.ts",
+    "dependencies":  {
+                         "@commhub/shared-types":  "*"
+                     },
+    "devDependencies":  {
+                            "vitest":  "^2.1.0",
+                            "typescript":  "^5.6.0"
+                        },
+    "scripts":  {
+                    "test":  "vitest run",
+                    "build":  "tsc -p tsconfig.json"
+                }
+}
