@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Permission, Role, RolePermissions } from '@commhub/shared-types';
-import { api, setAccessToken } from './api';
+import { api, API_BASE, setAccessToken } from './api';
 
 export interface User { id: string; email: string; name: string; role: Role; mfaEnabled?: boolean }
 
@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
+    fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' })
       .then(async (r) => {
         if (r.ok) {
           const d = await r.json();

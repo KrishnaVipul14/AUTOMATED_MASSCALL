@@ -1,4 +1,4 @@
-const API_BASE = ((import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+export const API_BASE = ((import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 let accessToken: string | null = null;
 export function setAccessToken(t: string | null) { accessToken = t; }
