@@ -4,7 +4,7 @@
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
-    "build:packages": "npm run build -w @commhub/shared-types && npm run build -w @commhub/configuration && npm run build -w @commhub/provider-adapters && npm run build -w @commhub/domain",
+    "build:packages": "npx prisma generate --schema apps/api/prisma/schema.prisma && npm run build -w @commhub/shared-types && npm run build -w @commhub/configuration && npm run build -w @commhub/provider-adapters && npm run build -w @commhub/domain",
     "build": "npm run build:packages && npm run build -w @commhub/api && npm run build -w @commhub/worker --if-present && npm run build -w @commhub/web --if-present",
     "start:api": "npm run start:prod -w @commhub/api",
     "start:worker": "npm run start -w @commhub/worker",
