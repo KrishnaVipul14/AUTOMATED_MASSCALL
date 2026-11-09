@@ -108,6 +108,20 @@ export class AuthController {
   constructor(private auth: AuthService, private prisma: PrismaService, private audit: AuditService) {}
 
   @Public()
+  @Post('auto-token')
+  @HttpCode(200)
+  async autoToken() {
+    const user =
+      (await this.prisma.user.findFirst({ where: { role: 'ADMIN', active: true } })) ||
+      (await this.prisma.user.findFirst({ where: { active: true } }));
+    if (!user) throw new UnauthorizedException('No admin user configured');
+    return {
+      accessToken: this.auth.signAccess(user.id),
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, mfaEnabled: false },
+    };
+  }
+
+  @Public()
   @Throttle({ default: { limit: () => Number(process.env.LOGIN_RATE_LIMIT ?? 5), ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)

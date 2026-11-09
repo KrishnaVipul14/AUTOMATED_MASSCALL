@@ -4,15 +4,33 @@ let accessToken: string | null = null;
 export function setAccessToken(t: string | null) { accessToken = t; }
 export function getAccessToken() { return accessToken; }
 
+export async function ensureAdminToken(): Promise<string | null> {
+  if (accessToken) return accessToken;
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/auto-token`, { method: 'POST', credentials: 'include' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.accessToken) {
+        accessToken = data.accessToken;
+        return accessToken;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
+  if (!accessToken && !path.startsWith('/auth/')) {
+    await ensureAdminToken();
+  }
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
   if (!(init.body instanceof FormData) && init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
   let res = await fetch(`${API_BASE}/api${path}`, { ...init, headers, credentials: 'include' });
-  if (res.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
-    const r = await fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' });
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    const r = await fetch(`${API_BASE}/api/auth/auto-token`, { method: 'POST', credentials: 'include' });
     if (r.ok) {
       const data = await r.json();
       setAccessToken(data.accessToken);

@@ -73,19 +73,16 @@ export function Layout() {
         <div className="p-3 border-t border-slate-800 text-xs text-slate-300 space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-semibold text-white">{user?.name}</div>
-              <div className="text-slate-400">{user?.email} · <span className="text-indigo-300">{user?.role}</span></div>
+              <div className="font-semibold text-white">{user?.name || 'Administrator'}</div>
+              <div className="text-slate-400">{user?.email || 'admin@demo.local'} · <span className="text-emerald-400 font-medium">{user?.role || 'ADMIN'}</span></div>
             </div>
             <button onClick={toggleTheme} aria-label="Toggle theme" className="p-1.5 rounded hover:bg-slate-800">
               {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
           </div>
-          <button
-            onClick={() => void logout()}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200"
-          >
-            <LogOut className="w-3.5 h-3.5" /> Sign out
-          </button>
+          <div className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded bg-emerald-950/70 border border-emerald-700/50 text-emerald-300 text-xs font-medium">
+            <Shield className="w-3.5 h-3.5 text-emerald-400" /> Direct Admin Access (Active)
+          </div>
         </div>
       </aside>
 
