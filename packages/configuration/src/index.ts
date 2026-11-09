@@ -3,8 +3,8 @@ import { z } from 'zod';
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
-  JWT_ACCESS_SECRET: z.string().min(16),
-  JWT_REFRESH_SECRET: z.string().min(16),
+  JWT_ACCESS_SECRET: z.string().min(16).default('commhub-jwt-access-secret-default-2026'),
+  JWT_REFRESH_SECRET: z.string().min(16).default('commhub-jwt-refresh-secret-default-2026'),
   APP_TIMEZONE: z.string().default('Asia/Kolkata'),
   PROVIDER_MODE: z.enum(['MOCK', 'TEST', 'PRODUCTION']).default('MOCK'),
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
