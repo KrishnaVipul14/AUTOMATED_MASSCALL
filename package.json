@@ -8,6 +8,7 @@
     "build": "npm run build:packages && npm run build -w @commhub/api && npm run build -w @commhub/worker --if-present && npm run build -w @commhub/web --if-present",
     "start:api": "npm run start:prod -w @commhub/api",
     "start:worker": "npm run start -w @commhub/worker",
+    "quick-call": "npx tsx scripts/quick-call.ts",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run build:packages && npm run test --workspaces --if-present"
   }

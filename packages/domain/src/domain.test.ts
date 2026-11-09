@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseContactsCsv, CSV_TEMPLATE } from './csv';
 import { normalisePhone, maskPhone } from './phone';
+import { extractContactsFromSqlOrText } from './sql-parser';
 import { smsSegments } from './sms';
 import { isWithinWindow, msUntilWindowOpens } from './window';
 
@@ -12,6 +13,25 @@ describe('phone', () => {
     expect(normalisePhone('')).toBeNull();
   });
   it('masks numbers', () => expect(maskPhone('+919876543210')).toBe('+9198******10'));
+});
+
+describe('sql parser', () => {
+  it('extracts contacts from SQL INSERT statements', () => {
+    const sql = `INSERT INTO citizens (name, phone, city) VALUES ('Rahul', '9876543210', 'Delhi'), ('Priya Singh', '+919876543211', 'Mumbai');`;
+    const res = extractContactsFromSqlOrText(sql);
+    expect(res).toEqual([
+      { phoneE164: '+919876543210', name: 'Rahul' },
+      { phoneE164: '+919876543211', name: 'Priya Singh' },
+    ]);
+  });
+
+  it('extracts contacts from JSON, CSV and raw text', () => {
+    const json = `[{"phone": "9876543210", "name": "Aman"}, {"phone": "9876543212", "name": "Bob"}]`;
+    expect(extractContactsFromSqlOrText(json)).toHaveLength(2);
+
+    const csv = "9876543210, Aman\n9876543212, Bob";
+    expect(extractContactsFromSqlOrText(csv)).toHaveLength(2);
+  });
 });
 
 describe('contact CSV', () => {

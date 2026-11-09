@@ -573,6 +573,44 @@ export function CampaignsPage({ onlyPending = false }: { onlyPending?: boolean }
   const [audioAssetId, setAudioAssetId] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
+  // Direct SQL Mass Call state
+  const [sqlInput, setSqlInput] = useState(
+    `INSERT INTO contacts (phone, name) VALUES\n('+919876543210', 'Rahul Sharma'),\n('+919876543211', 'Sunita Devi'),\n('+919876543212', 'Amit Verma');`
+  );
+  const [directCampaignName, setDirectCampaignName] = useState('');
+  const [directAudioId, setDirectAudioId] = useState('');
+  const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
+  const [quickCalling, setQuickCalling] = useState(false);
+
+  const runQuickCall = async () => {
+    setErr(null);
+    setQuickSuccess(null);
+    setQuickCalling(true);
+    try {
+      const res = await api<{
+        success: boolean;
+        dispatchedCalls: number;
+        voiceNote: { title: string };
+        message: string;
+      }>('/campaigns/quick-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          sqlOrData: sqlInput,
+          campaignName: directCampaignName || undefined,
+          audioAssetId: directAudioId || undefined,
+          autoSimulate: true,
+        }),
+      });
+      setQuickSuccess(res.message);
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Quick Call failed');
+    } finally {
+      setQuickCalling(false);
+    }
+  };
+
   const campaigns = useQuery({
     queryKey: ['campaigns'],
     queryFn: () => api<{
@@ -581,7 +619,7 @@ export function CampaignsPage({ onlyPending = false }: { onlyPending?: boolean }
     }[]>('/campaigns'),
   });
   const sms = useQuery({ queryKey: ['sms-templates'], queryFn: () => api<{ id: string; name: string; status: string }[]>('/sms-templates') });
-  const voice = useQuery({ queryKey: ['voice-announcements'], queryFn: () => api<{ id: string; title: string; status: string }[]>('/voice-announcements') });
+  const voice = useQuery({ queryKey: ['voice-announcements'], queryFn: () => api<{ id: string; title: string; status: string; durationSec?: number }[]>('/voice-announcements') });
 
   const act = async (path: string, body: Record<string, unknown> = {}) => {
     setErr(null);
@@ -622,6 +660,77 @@ export function CampaignsPage({ onlyPending = false }: { onlyPending?: boolean }
         <p className="text-xs text-slate-500">Explicit maker-checker approval is enforced server-side. The campaign creator cannot approve their own campaign.</p>
       </div>
       {err && <div role="alert" className="p-2.5 rounded bg-red-50 border border-red-200 text-xs text-red-700">{err}</div>}
+      {quickSuccess && (
+        <div role="status" className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 font-medium">
+          ✅ {quickSuccess}
+        </div>
+      )}
+
+      {!onlyPending && can('campaigns:create') && (
+        <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-xl p-5 shadow-md border border-indigo-700/50 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400">⚡ Direct SQL &amp; Data to Mass Call</div>
+              <h2 className="text-base font-bold mt-0.5">Instant Mass Call Pipeline (100% Free Mode)</h2>
+              <p className="text-xs text-slate-300">
+                Paste SQL statements, table rows, or a list of phone numbers. It automatically registers contacts, attaches the voice note, and completes the calls in free mode without costing a rupee!
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              ₹0.00 Free Mode
+            </span>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input
+                placeholder="Campaign Name (optional)"
+                value={directCampaignName}
+                onChange={(e) => setDirectCampaignName(e.target.value)}
+                className="px-3 py-1.5 rounded-md border border-slate-700 bg-slate-800 text-white placeholder-slate-400"
+              />
+              <select
+                value={directAudioId}
+                onChange={(e) => setDirectAudioId(e.target.value)}
+                className="px-3 py-1.5 rounded-md border border-slate-700 bg-slate-800 text-white"
+              >
+                <option value="">Default Announcement Voice Note (Pre-approved)</option>
+                {voice.data?.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.title} ({a.durationSec ? `${a.durationSec}s` : 'WAV'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Paste SQL Statements / Database Rows / Phone Numbers:
+              </label>
+              <textarea
+                rows={3}
+                value={sqlInput}
+                onChange={(e) => setSqlInput(e.target.value)}
+                placeholder="Paste SQL statements, CSV, or phone numbers here..."
+                className="w-full font-mono text-xs p-2.5 rounded-md border border-slate-700 bg-slate-950/80 text-emerald-400 placeholder-slate-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-slate-400">
+                Calls are completed instantly and logged in Reports &amp; Analytics at ₹0 cost.
+              </span>
+              <button
+                onClick={() => void runQuickCall()}
+                disabled={quickCalling || !sqlInput.trim()}
+                className="px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs disabled:opacity-50 transition shadow"
+              >
+                {quickCalling ? 'Calling Recipients Now…' : '🚀 Launch Mass Call (100% Free)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!onlyPending && can('campaigns:create') && (
         <Card title="Create Campaign Draft">
