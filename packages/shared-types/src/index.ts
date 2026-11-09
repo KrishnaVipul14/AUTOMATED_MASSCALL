@@ -7,8 +7,15 @@ export type Permission =
   | 'campaigns:create' | 'campaigns:approve' | 'campaigns:control'
   | 'reports:read' | 'reports:export' | 'audit:read';
 
+export const ALL_PERMISSIONS: Permission[] = [
+  'users:manage', 'settings:manage', 'providers:manage',
+  'contacts:import', 'contacts:read', 'contacts:suppress',
+  'campaigns:create', 'campaigns:approve', 'campaigns:control',
+  'reports:read', 'reports:export', 'audit:read',
+];
+
 export const RolePermissions: Record<Role, Permission[]> = {
-  ADMIN: ['users:manage', 'settings:manage', 'providers:manage', 'contacts:read', 'reports:read', 'audit:read'],
+  ADMIN: ALL_PERMISSIONS,
   OPERATOR: ['contacts:import', 'contacts:read', 'contacts:suppress', 'campaigns:create', 'campaigns:control', 'reports:read'],
   APPROVER: ['contacts:read', 'campaigns:approve', 'reports:read'],
   AUDITOR: ['contacts:read', 'reports:read', 'reports:export', 'audit:read'],

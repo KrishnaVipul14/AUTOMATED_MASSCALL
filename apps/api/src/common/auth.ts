@@ -20,7 +20,8 @@ export const RequirePermissions = (...p: Permission[]) => SetMetadata(PERMS, p);
 export const CurrentUser = createParamDecorator((_d, ctx: ExecutionContext): AuthUser => ctx.switchToHttp().getRequest().user);
 
 export function hasPermission(role: Role, p: Permission) {
-  return RolePermissions[role].includes(p);
+  if (role === 'ADMIN') return true;
+  return RolePermissions[role]?.includes(p) ?? false;
 }
 
 /**
