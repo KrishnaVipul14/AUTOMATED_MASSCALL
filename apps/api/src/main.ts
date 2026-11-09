@@ -30,17 +30,21 @@ async function bootstrap() {
   );
   SwaggerModule.setup('api/docs', app, doc);
   app.enableShutdownHooks();
-  await app.listen(cfg.PORT);
+  await app.listen(cfg.PORT, '0.0.0.0');
   Logger.log(`API listening on :${cfg.PORT} (provider mode: ${cfg.PROVIDER_MODE})`, 'Bootstrap');
 
   // Optional embedded worker mode for zero-cost single-container free tiers (local/prod still supports separate apps/worker process).
   if (process.env.EMBED_WORKER === 'true') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const workerModule: any = await import('@commhub/worker' as any);
-    const rt = await workerModule.startWorkerRuntime();
-    setInterval(() => void rt.publishOutboxOnce(), 1500);
-    setInterval(() => void rt.reconcileOnce(), 30_000);
-    Logger.log('Embedded BullMQ worker started (EMBED_WORKER=true)', 'Bootstrap');
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const workerModule: any = await import('@commhub/worker' as any);
+      const rt = await workerModule.startWorkerRuntime();
+      setInterval(() => void rt.publishOutboxOnce(), 1500);
+      setInterval(() => void rt.reconcileOnce(), 30_000);
+      Logger.log('Embedded BullMQ worker started (EMBED_WORKER=true)', 'Bootstrap');
+    } catch (err) {
+      Logger.error(`Embedded BullMQ worker failed to start: ${err instanceof Error ? err.message : err}`, 'Bootstrap');
+    }
   }
 }
 
