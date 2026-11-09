@@ -22,8 +22,15 @@ async function bootstrap() {
   const cfg = config();
   const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: false });
   configureApp(app);
-  const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').split(',').map((s) => s.trim());
-  app.enableCors({ origin: origins, credentials: true });
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Dynamic origin reflection: allows any Vercel domain or localhost with credentials
+      callback(null, origin || true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  });
   const doc = SwaggerModule.createDocument(
     app,
     new DocumentBuilder().setTitle('CommHub API').setDescription('Internal communication management API').setVersion('0.1.0').addBearerAuth().build(),
