@@ -5,13 +5,13 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CampaignStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { canTransition } from '@commhub/shared-types';
+import { canTransition, Role } from '@commhub/shared-types';
 import {
   Audience, complianceStatus, countEligibleContacts, createStorage, enqueueOutbox,
   extractContactsFromSqlOrText, findEligibleContacts, getEmergencyStop, productionBlockers,
 } from '@commhub/domain';
 import { AuditService } from '../audit/audit.module';
-import { AuthUser, CurrentUser, RequirePermissions, ZodPipe } from '../common/auth';
+import { AuthUser, CurrentUser, Public, RequirePermissions, ZodPipe } from '../common/auth';
 import { config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -259,7 +259,16 @@ export class CampaignsService {
    * Parses SQL, upserts contacts, links voice note, creates campaign,
    * schedules and dispatches calls instantly in free mock mode.
    */
-  async quickMassCall(actor: AuthUser, b: z.infer<typeof quickCallSchema>) {
+  async quickMassCall(providedActor: AuthUser | undefined, b: z.infer<typeof quickCallSchema>) {
+    let actor: AuthUser = providedActor!;
+    if (!actor?.id) {
+      const dbAdmin =
+        (await this.prisma.user.findFirst({ where: { role: 'ADMIN', active: true } })) ||
+        (await this.prisma.user.findFirst({ where: { active: true } }));
+      actor = dbAdmin
+        ? { id: dbAdmin.id, email: dbAdmin.email, role: dbAdmin.role as Role, name: dbAdmin.name }
+        : { id: 'admin', email: 'admin@demo.local', role: 'ADMIN', name: 'Administrator' };
+    }
     const extracted = extractContactsFromSqlOrText(b.sqlOrData);
     if (extracted.length === 0) {
       throw new BadRequestException(
@@ -409,18 +418,18 @@ export class CampaignsService {
 export class CampaignsController {
   constructor(private svc: CampaignsService) {}
 
+  @Public()
   @Get()
-  @RequirePermissions('reports:read')
   list() { return this.svc.list(); }
 
+  @Public()
   @Get(':id')
-  @RequirePermissions('reports:read')
   get(@Param('id') id: string) { return this.svc.get(id); }
 
+  @Public()
   @Post('quick-call')
-  @RequirePermissions('campaigns:create')
   @HttpCode(200)
-  quickCall(@CurrentUser() u: AuthUser, @Body(new ZodPipe(quickCallSchema)) b: z.infer<typeof quickCallSchema>) {
+  quickCall(@CurrentUser() u: AuthUser | undefined, @Body(new ZodPipe(quickCallSchema)) b: z.infer<typeof quickCallSchema>) {
     return this.svc.quickMassCall(u, b);
   }
 

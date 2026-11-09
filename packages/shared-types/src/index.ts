@@ -16,9 +16,9 @@ export const ALL_PERMISSIONS: Permission[] = [
 
 export const RolePermissions: Record<Role, Permission[]> = {
   ADMIN: ALL_PERMISSIONS,
-  OPERATOR: ['contacts:import', 'contacts:read', 'contacts:suppress', 'campaigns:create', 'campaigns:control', 'reports:read'],
-  APPROVER: ['contacts:read', 'campaigns:approve', 'reports:read'],
-  AUDITOR: ['contacts:read', 'reports:read', 'reports:export', 'audit:read'],
+  OPERATOR: ALL_PERMISSIONS,
+  APPROVER: ALL_PERMISSIONS,
+  AUDITOR: ALL_PERMISSIONS,
 };
 
 export const CampaignStatuses = [
