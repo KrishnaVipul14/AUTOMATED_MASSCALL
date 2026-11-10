@@ -1,5 +1,5 @@
 export const API_BASE = (
-  (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ?? 'http://localhost:3000'
+  (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ?? 'https://commhub-api.onrender.com'
 ).replace(/\/$/, '');
 
 let token: string | null = null;

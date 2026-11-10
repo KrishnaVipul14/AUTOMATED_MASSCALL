@@ -382,6 +382,7 @@ export class CampaignsService {
       accountSid: cfg.TWILIO_ACCOUNT_SID,
       authToken: cfg.TWILIO_AUTH_TOKEN,
       phoneNumber: cfg.TWILIO_PHONE_NUMBER,
+      publicBaseUrl: cfg.PUBLIC_BASE_URL,
     });
     const streamUrl = `${cfg.PUBLIC_BASE_URL.replace(/\/$/, '')}/api/audio/${audio.id}/stream`;
     const recs = await this.prisma.campaignRecipient.findMany({ where: { campaignId: camp.id } });

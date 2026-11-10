@@ -150,6 +150,8 @@ export interface TwilioConfig {
   accountSid: string;
   authToken: string;
   phoneNumber: string;
+  /** Public base URL that serves the /api/twiml/voice endpoint. Hosted TwiML is required for trial accounts (inline Twiml is rejected). */
+  publicBaseUrl?: string;
 }
 
 export class TwilioVoiceProvider implements VoiceProvider {
@@ -197,16 +199,19 @@ export class TwilioVoiceProvider implements VoiceProvider {
       return { status: 'FAILED', error: 'Twilio credentials or phone number missing', simulated: false };
     }
     try {
+      const base = (this.cfg.publicBaseUrl ?? 'https://commhub-api.onrender.com').replace(/\/$/, '');
+      // Trial accounts reject the inline "Twiml" parameter; a hosted TwiML URL is accepted everywhere.
+      const audioIdMatch = input.audioUrl.match(/\/api\/audio\/([^/]+)\/stream\/?$/);
+      const twimlUrl = audioIdMatch
+        ? `${base}/api/twiml/voice?audioId=${encodeURIComponent(audioIdMatch[1])}`
+        : `${base}/api/twiml/voice?text=${encodeURIComponent(input.audioUrl)}`;
+
       const url = `https://api.twilio.com/2010-04-01/Accounts/${this.cfg.accountSid}/Calls.json`;
       const auth = Buffer.from(`${this.cfg.accountSid}:${this.cfg.authToken}`).toString('base64');
-      const twiml = input.audioUrl.startsWith('http')
-        ? `<Response><Play>${input.audioUrl}</Play></Response>`
-        : `<Response><Say voice="Polly.Aditi" language="hi-IN">${input.audioUrl}</Say></Response>`;
-
       const body = new URLSearchParams({
         To: input.to,
         From: this.cfg.phoneNumber,
-        Twiml: twiml,
+        Url: twimlUrl,
       });
 
       const res = await fetch(url, {
@@ -330,13 +335,13 @@ export class TwilioSmsProvider implements SmsProvider {
  * Factory for voice and SMS adapters.
  */
 export function createProviders(mode: string, secret: string, twilio?: TwilioConfig): { voice: VoiceProvider; sms: SmsProvider } {
+  if (mode === 'MOCK') {
+    return { voice: new MockVoiceProvider(secret), sms: new MockSmsProvider(secret) };
+  }
   if (twilio?.accountSid && twilio?.authToken && twilio?.phoneNumber) {
     return { voice: new TwilioVoiceProvider(twilio), sms: new TwilioSmsProvider(twilio) };
   }
-  if (mode !== 'MOCK') {
-    throw new Error(
-      `No approved telephony provider is configured for ${mode} mode. Refusing to silently simulate real production traffic - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER, or run with PROVIDER_MODE=MOCK.`,
-    );
-  }
-  return { voice: new MockVoiceProvider(secret), sms: new MockSmsProvider(secret) };
+  throw new Error(
+    `No approved telephony provider is configured for ${mode} mode. Refusing to silently simulate real production traffic - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER, or run with PROVIDER_MODE=MOCK.`,
+  );
 }

@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, Controller, Get, Injectable, Module, NotFoundException,
-  Param, Post, Res, UploadedFile, UseInterceptors,
+  BadRequestException, Body, Controller, Get, Header, HttpCode, Injectable, Module, NotFoundException,
+  Param, Post, Query, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -10,6 +10,7 @@ import { createStorage, smsSegments, StorageAdapter } from '@commhub/domain';
 import { AuditService } from '../audit/audit.module';
 import { AuthUser, CurrentUser, Public, RequirePermissions, ZodPipe } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
+import { config } from '../config';
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const MAX_DURATION_SEC = 180;
@@ -136,6 +137,24 @@ export class VoiceController {
     res.setHeader('Content-Type', asset.mimeType);
     res.setHeader('Content-Length', buf.length);
     res.end(buf);
+  }
+
+  /**
+   * Hosted TwiML for outbound voice calls. Twilio (trial included) fetches this public URL
+   * instead of accepting inline TwiML. Only IDs already stored by this API are playable,
+   * so the endpoint can never be abused as an arbitrary audio proxy.
+   */
+  @Public()
+  @Get('twiml/voice')
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  twiml(@Query('audioId') audioId?: string, @Query('text') text?: string, @Query('loop') loop?: string) {
+    const escapeXml = (s: string) => s.replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]!));
+    if (audioId && /^[0-9a-fA-F-]{10,64}$/.test(audioId)) {
+      const url = `${config().PUBLIC_BASE_URL.replace(/\/$/, '')}/api/audio/${audioId}/stream`;
+      return `<Response><Play loop="${Number(loop) > 0 && Number(loop) <= 9 ? Math.floor(Number(loop)) : 1}">${escapeXml(url)}</Play></Response>`;
+    }
+    const spoken = (text ?? 'Koi recording configured nahi hai.').slice(0, 500);
+    return `<Response><Say voice="Polly.Aditi" language="hi-IN">${escapeXml(spoken)}</Say></Response>`;
   }
 
   @Post(':id/review')

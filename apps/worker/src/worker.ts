@@ -211,7 +211,7 @@ export async function startWorkerRuntime(): Promise<WorkerRuntime> {
     cfg.PROVIDER_MODE,
     cfg.WEBHOOK_SIGNING_SECRET || 'mock-secret',
     cfg.TWILIO_ACCOUNT_SID && cfg.TWILIO_AUTH_TOKEN && cfg.TWILIO_PHONE_NUMBER
-      ? { accountSid: cfg.TWILIO_ACCOUNT_SID, authToken: cfg.TWILIO_AUTH_TOKEN, phoneNumber: cfg.TWILIO_PHONE_NUMBER }
+      ? { accountSid: cfg.TWILIO_ACCOUNT_SID, authToken: cfg.TWILIO_AUTH_TOKEN, phoneNumber: cfg.TWILIO_PHONE_NUMBER, publicBaseUrl: cfg.PUBLIC_BASE_URL }
       : undefined
   );
 
