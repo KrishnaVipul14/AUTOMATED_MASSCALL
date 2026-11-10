@@ -38,6 +38,7 @@ export async function processRecipientSubmission(
   providers: { voice: VoiceProvider; sms: SmsProvider },
   recipientId: string,
   envMode = process.env.PROVIDER_MODE ?? 'MOCK',
+  publicBaseUrl = 'https://commhub-api.onrender.com',
 ): Promise<{ outcome: string; detail?: string }> {
   // 1. Emergency stop check before touching anything.
   const stop = await getEmergencyStop(prisma);
@@ -100,7 +101,7 @@ export async function processRecipientSubmission(
     ? await providers.sms.submitMessage({ to: r.phoneE164, body: c.smsTemplate?.body ?? '', idempotencyKey: r.idempotencyKey })
     : await providers.voice.submitCall({
         to: r.phoneE164,
-        audioUrl: c.audioAsset ? `https://commhub-api.onrender.com/api/audio/${c.audioAsset.id}/stream` : 'Official Announcement',
+        audioUrl: c.audioAsset ? `${publicBaseUrl.replace(/\/$/, '')}/api/audio/${c.audioAsset.id}/stream` : 'Official Announcement',
         idempotencyKey: r.idempotencyKey,
       });
 
@@ -226,7 +227,7 @@ export async function startWorkerRuntime(): Promise<WorkerRuntime> {
     new Worker(
       queueName,
       async (job: Job<{ recipientId: string }>, token) => {
-        const res = await processRecipientSubmission(prisma, providers, job.data.recipientId, cfg.PROVIDER_MODE);
+        const res = await processRecipientSubmission(prisma, providers, job.data.recipientId, cfg.PROVIDER_MODE, cfg.PUBLIC_BASE_URL);
         if (res.outcome === 'OUTSIDE_WINDOW') {
           await job.moveToDelayed(Date.now() + Number(res.detail || 60_000), token);
           throw new DelayedError();

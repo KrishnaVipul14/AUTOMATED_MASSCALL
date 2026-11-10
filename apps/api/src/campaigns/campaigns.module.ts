@@ -383,7 +383,7 @@ export class CampaignsService {
       authToken: cfg.TWILIO_AUTH_TOKEN,
       phoneNumber: cfg.TWILIO_PHONE_NUMBER,
     });
-    const streamUrl = `https://commhub-api.onrender.com/api/audio/${audio.id}/stream`;
+    const streamUrl = `${cfg.PUBLIC_BASE_URL.replace(/\/$/, '')}/api/audio/${audio.id}/stream`;
     const recs = await this.prisma.campaignRecipient.findMany({ where: { campaignId: camp.id } });
     let queued = 0;
     for (const r of recs) {

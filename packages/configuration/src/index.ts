@@ -14,6 +14,7 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().default(''),
   TWILIO_AUTH_TOKEN: z.string().default(''),
   TWILIO_PHONE_NUMBER: z.string().default(''),
+  PUBLIC_BASE_URL: z.string().url().default('https://commhub-api.onrender.com'),
 });
 export type AppConfig = z.infer<typeof schema>;
 
