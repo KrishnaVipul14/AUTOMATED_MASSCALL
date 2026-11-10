@@ -19,9 +19,8 @@ export const RequirePermissions = (...p: Permission[]) => SetMetadata(PERMS, p);
 
 export const CurrentUser = createParamDecorator((_d, ctx: ExecutionContext): AuthUser => ctx.switchToHttp().getRequest().user);
 
-export function hasPermission(_role: Role, _p: Permission) {
-  // Direct Dashboard Mode: full access across all operations
-  return true;
+export function hasPermission(role: Role, p: Permission) {
+  return RolePermissions[role]?.includes(p) ?? false;
 }
 
 /**
