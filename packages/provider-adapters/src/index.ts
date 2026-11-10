@@ -333,5 +333,10 @@ export function createProviders(mode: string, secret: string, twilio?: TwilioCon
   if (twilio?.accountSid && twilio?.authToken && twilio?.phoneNumber) {
     return { voice: new TwilioVoiceProvider(twilio), sms: new TwilioSmsProvider(twilio) };
   }
+  if (mode !== 'MOCK') {
+    throw new Error(
+      `No approved telephony provider is configured for ${mode} mode. Refusing to silently simulate real production traffic - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER, or run with PROVIDER_MODE=MOCK.`,
+    );
+  }
   return { voice: new MockVoiceProvider(secret), sms: new MockSmsProvider(secret) };
 }
