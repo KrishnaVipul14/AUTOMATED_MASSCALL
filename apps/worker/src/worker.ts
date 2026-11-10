@@ -98,7 +98,11 @@ export async function processRecipientSubmission(
   // 8. Submit to provider with idempotencyKey.
   const res = c.channel === 'SMS'
     ? await providers.sms.submitMessage({ to: r.phoneE164, body: c.smsTemplate?.body ?? '', idempotencyKey: r.idempotencyKey })
-    : await providers.voice.submitCall({ to: r.phoneE164, audioUrl: `storage://${c.audioAsset?.storageKey ?? ''}`, idempotencyKey: r.idempotencyKey });
+    : await providers.voice.submitCall({
+        to: r.phoneE164,
+        audioUrl: c.audioAsset ? `https://commhub-api.onrender.com/api/audio/${c.audioAsset.id}/stream` : 'Official Announcement',
+        idempotencyKey: r.idempotencyKey,
+      });
 
   if (res.status === 'RETRYABLE') {
     // Request definitely did not reach the provider: reset to QUEUED so BullMQ retry can safely re-attempt.
@@ -202,7 +206,13 @@ export async function startWorkerRuntime(): Promise<WorkerRuntime> {
   const prisma = new PrismaClient();
   await prisma.$connect();
   const redis = new IORedis(cfg.REDIS_URL, { maxRetriesPerRequest: null });
-  const providers = createProviders('MOCK', cfg.WEBHOOK_SIGNING_SECRET || 'mock-secret');
+  const providers = createProviders(
+    cfg.PROVIDER_MODE,
+    cfg.WEBHOOK_SIGNING_SECRET || 'mock-secret',
+    cfg.TWILIO_ACCOUNT_SID && cfg.TWILIO_AUTH_TOKEN && cfg.TWILIO_PHONE_NUMBER
+      ? { accountSid: cfg.TWILIO_ACCOUNT_SID, authToken: cfg.TWILIO_AUTH_TOKEN, phoneNumber: cfg.TWILIO_PHONE_NUMBER }
+      : undefined
+  );
 
   const queues: Record<string, Queue> = {};
   for (const name of Object.values(QUEUES)) queues[name] = new Queue(name, { connection: redis });

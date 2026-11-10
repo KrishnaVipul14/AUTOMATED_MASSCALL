@@ -1,1 +1,1 @@
-{"root":["./src/app.test.tsx","./src/app.tsx","./src/layout.tsx","./src/api.ts","./src/auth-context.tsx","./src/main.tsx","./src/pages.tsx","./src/test-setup.ts"],"version":"5.9.3"}
+{"root":["./src/app.test.tsx","./src/app.tsx","./src/main.tsx","./src/test-setup.ts","./src/lib/api.ts","./src/lib/contacts.ts","./src/lib/message.ts","./src/lib/phone.ts","./src/lib/store.ts"],"version":"5.9.3"}

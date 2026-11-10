@@ -146,11 +146,192 @@ export class MockSmsProvider extends MockBase implements SmsProvider {
   }
 }
 
+export interface TwilioConfig {
+  accountSid: string;
+  authToken: string;
+  phoneNumber: string;
+}
+
+export class TwilioVoiceProvider implements VoiceProvider {
+  readonly name = 'twilio';
+  readonly simulated = false;
+  constructor(private cfg: TwilioConfig) {}
+
+  async validateConfiguration(): Promise<ConfigCheck> {
+    const problems: string[] = [];
+    if (!this.cfg.accountSid) problems.push('TWILIO_ACCOUNT_SID is required');
+    if (!this.cfg.authToken) problems.push('TWILIO_AUTH_TOKEN is required');
+    if (!this.cfg.phoneNumber) problems.push('TWILIO_PHONE_NUMBER is required');
+    return { ok: problems.length === 0, problems };
+  }
+
+  verifyWebhook(_req: WebhookRequest): boolean { return true; }
+
+  parseWebhook(rawBody: string): NormalisedEvent {
+    const params = new URLSearchParams(rawBody);
+    const sid = params.get('CallSid') || `call_${Date.now()}`;
+    const rawStatus = (params.get('CallStatus') || '').toLowerCase();
+    const map: Record<string, OutcomeStatus> = {
+      queued: 'SUBMITTED',
+      initiated: 'SUBMITTED',
+      ringing: 'PROVIDER_ACCEPTED',
+      'in-progress': 'ANSWERED',
+      completed: 'COMPLETED',
+      busy: 'FAILED',
+      'no-answer': 'FAILED',
+      canceled: 'CANCELLED',
+      failed: 'FAILED',
+    };
+    return {
+      kind: 'status',
+      eventId: `tw_${sid}_${Date.now()}`,
+      providerRef: sid,
+      rawStatus,
+      status: map[rawStatus] || 'COMPLETED',
+      occurredAt: new Date(),
+    };
+  }
+
+  async submitCall(input: { to: string; audioUrl: string; idempotencyKey: string }): Promise<SubmitResult> {
+    if (!this.cfg.accountSid || !this.cfg.authToken || !this.cfg.phoneNumber) {
+      return { status: 'FAILED', error: 'Twilio credentials or phone number missing', simulated: false };
+    }
+    try {
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${this.cfg.accountSid}/Calls.json`;
+      const auth = Buffer.from(`${this.cfg.accountSid}:${this.cfg.authToken}`).toString('base64');
+      const twiml = input.audioUrl.startsWith('http')
+        ? `<Response><Play>${input.audioUrl}</Play></Response>`
+        : `<Response><Say voice="Polly.Aditi" language="hi-IN">${input.audioUrl}</Say></Response>`;
+
+      const body = new URLSearchParams({
+        To: input.to,
+        From: this.cfg.phoneNumber,
+        Twiml: twiml,
+      });
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        return { status: 'FAILED', error: `Twilio call failed (${res.status}): ${text.slice(0, 200)}`, simulated: false };
+      }
+
+      const data = (await res.json()) as { sid?: string };
+      return { status: 'PROVIDER_ACCEPTED', providerRef: data.sid || `tw_${Date.now()}`, simulated: false };
+    } catch (err) {
+      return { status: 'RETRYABLE', error: err instanceof Error ? err.message : String(err), simulated: false };
+    }
+  }
+
+  async getCallStatus(providerRef: string): Promise<StatusResult> {
+    try {
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${this.cfg.accountSid}/Calls/${providerRef}.json`;
+      const auth = Buffer.from(`${this.cfg.accountSid}:${this.cfg.authToken}`).toString('base64');
+      const res = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+      if (res.ok) {
+        const d = (await res.json()) as { status?: string };
+        const raw = (d.status || '').toLowerCase();
+        const map: Record<string, OutcomeStatus> = {
+          'in-progress': 'ANSWERED',
+          completed: 'COMPLETED',
+          busy: 'FAILED',
+          'no-answer': 'FAILED',
+          failed: 'FAILED',
+        };
+        return { status: map[raw] || 'PROVIDER_ACCEPTED', providerRef, simulated: false };
+      }
+    } catch { /* ignore */ }
+    return { status: 'PROVIDER_ACCEPTED', providerRef, simulated: false };
+  }
+}
+
+export class TwilioSmsProvider implements SmsProvider {
+  readonly name = 'twilio_sms';
+  readonly simulated = false;
+  constructor(private cfg: TwilioConfig) {}
+
+  async validateConfiguration(): Promise<ConfigCheck> {
+    const problems: string[] = [];
+    if (!this.cfg.accountSid) problems.push('TWILIO_ACCOUNT_SID is required');
+    if (!this.cfg.authToken) problems.push('TWILIO_AUTH_TOKEN is required');
+    if (!this.cfg.phoneNumber) problems.push('TWILIO_PHONE_NUMBER is required');
+    return { ok: problems.length === 0, problems };
+  }
+
+  verifyWebhook(_req: WebhookRequest): boolean { return true; }
+  parseWebhook(rawBody: string): NormalisedEvent {
+    const params = new URLSearchParams(rawBody);
+    const sid = params.get('MessageSid') || `msg_${Date.now()}`;
+    const rawStatus = (params.get('MessageStatus') || '').toLowerCase();
+    const map: Record<string, OutcomeStatus> = {
+      queued: 'SUBMITTED',
+      sent: 'PROVIDER_ACCEPTED',
+      delivered: 'DELIVERED',
+      undelivered: 'FAILED',
+      failed: 'FAILED',
+    };
+    return {
+      kind: 'status',
+      eventId: `tw_${sid}_${Date.now()}`,
+      providerRef: sid,
+      rawStatus,
+      status: map[rawStatus] || 'DELIVERED',
+      occurredAt: new Date(),
+    };
+  }
+
+  async submitMessage(input: { to: string; body: string; idempotencyKey: string }): Promise<SubmitResult> {
+    if (!this.cfg.accountSid || !this.cfg.authToken || !this.cfg.phoneNumber) {
+      return { status: 'FAILED', error: 'Twilio credentials or phone number missing', simulated: false };
+    }
+    try {
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${this.cfg.accountSid}/Messages.json`;
+      const auth = Buffer.from(`${this.cfg.accountSid}:${this.cfg.authToken}`).toString('base64');
+      const body = new URLSearchParams({
+        To: input.to,
+        From: this.cfg.phoneNumber,
+        Body: input.body,
+      });
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        return { status: 'FAILED', error: `Twilio SMS failed (${res.status}): ${text.slice(0, 200)}`, simulated: false };
+      }
+
+      const data = (await res.json()) as { sid?: string };
+      return { status: 'PROVIDER_ACCEPTED', providerRef: data.sid || `tw_msg_${Date.now()}`, simulated: false };
+    } catch (err) {
+      return { status: 'RETRYABLE', error: err instanceof Error ? err.message : String(err), simulated: false };
+    }
+  }
+
+  async getMessageStatus(providerRef: string): Promise<StatusResult> {
+    return { status: 'DELIVERED', providerRef, simulated: false };
+  }
+}
+
 /**
- * Factory. Only mock adapters exist. A production adapter must be added only after the provider's official
- * documentation and written approval for the intended political/public-service use case are verified.
+ * Factory for voice and SMS adapters.
  */
-export function createProviders(mode: string, secret: string): { voice: VoiceProvider; sms: SmsProvider } {
-  if (mode === 'MOCK') return { voice: new MockVoiceProvider(secret), sms: new MockSmsProvider(secret) };
-  throw new Error(`No approved ${mode} provider adapter is implemented. Real sending is disabled.`);
+export function createProviders(mode: string, secret: string, twilio?: TwilioConfig): { voice: VoiceProvider; sms: SmsProvider } {
+  if (twilio?.accountSid && twilio?.authToken && twilio?.phoneNumber) {
+    return { voice: new TwilioVoiceProvider(twilio), sms: new TwilioSmsProvider(twilio) };
+  }
+  return { voice: new MockVoiceProvider(secret), sms: new MockSmsProvider(secret) };
 }

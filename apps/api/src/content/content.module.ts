@@ -8,7 +8,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { createStorage, smsSegments, StorageAdapter } from '@commhub/domain';
 import { AuditService } from '../audit/audit.module';
-import { AuthUser, CurrentUser, RequirePermissions, ZodPipe } from '../common/auth';
+import { AuthUser, CurrentUser, Public, RequirePermissions, ZodPipe } from '../common/auth';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
@@ -129,8 +129,8 @@ export class VoiceController {
     return this.svc.uploadAudio(u, file, b.title, b.durationSec ? Number(b.durationSec) : undefined);
   }
 
+  @Public()
   @Get(':id/stream')
-  @RequirePermissions('contacts:read')
   async stream(@Param('id') id: string, @Res() res: Response) {
     const { asset, buf } = await this.svc.streamAudio(id);
     res.setHeader('Content-Type', asset.mimeType);

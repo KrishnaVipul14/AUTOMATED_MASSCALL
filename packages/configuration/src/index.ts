@@ -11,6 +11,9 @@ const schema = z.object({
   STORAGE_LOCAL_PATH: z.string().default('./.storage'),
   WEBHOOK_SIGNING_SECRET: z.string().default(''),
   PORT: z.coerce.number().default(3000),
+  TWILIO_ACCOUNT_SID: z.string().default(''),
+  TWILIO_AUTH_TOKEN: z.string().default(''),
+  TWILIO_PHONE_NUMBER: z.string().default(''),
 });
 export type AppConfig = z.infer<typeof schema>;
 

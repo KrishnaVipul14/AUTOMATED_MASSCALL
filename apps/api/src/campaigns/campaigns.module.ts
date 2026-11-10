@@ -6,6 +6,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CampaignStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { canTransition, Role } from '@commhub/shared-types';
+import { createProviders } from '@commhub/provider-adapters';
 import {
   Audience, complianceStatus, countEligibleContacts, createStorage, enqueueOutbox,
   extractContactsFromSqlOrText, findEligibleContacts, getEmergencyStop, productionBlockers,
@@ -36,7 +37,7 @@ const quickCallSchema = z.object({
   campaignName: z.string().max(120).optional(),
   audioAssetId: z.string().uuid().optional(),
   voiceNoteTitle: z.string().max(120).optional(),
-  autoSimulate: z.boolean().default(true),
+  autoSimulate: z.boolean().default(false),
 });
 
 function makeDefaultWavBuffer(durationSec = 2): Buffer {
@@ -260,6 +261,13 @@ export class CampaignsService {
    * schedules and dispatches calls instantly in free mock mode.
    */
   async quickMassCall(providedActor: AuthUser | undefined, b: z.infer<typeof quickCallSchema>) {
+    // Honest gate: automated PSTN calls need a real telephony provider. Never simulate success.
+    const cfg0 = config();
+    if (!(cfg0.TWILIO_ACCOUNT_SID && cfg0.TWILIO_AUTH_TOKEN && cfg0.TWILIO_PHONE_NUMBER)) {
+      throw new BadRequestException(
+        'No telephony provider is configured on the API, so no calls were dialed and no campaign was created. Automated outbound calling requires a real provider (e.g. Twilio) with TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER set on the server. Use the built-in WhatsApp / tel: links for free manual calling instead.',
+      );
+    }
     let actor: AuthUser = providedActor!;
     if (!actor?.id) {
       const dbAdmin =
@@ -363,51 +371,63 @@ export class CampaignsService {
       skipDuplicates: true,
     });
 
-    // 6. Free Mock Mode instant execution
-    if (b.autoSimulate) {
-      const recs = await this.prisma.campaignRecipient.findMany({ where: { campaignId: camp.id } });
-      for (let i = 0; i < recs.length; i++) {
-        const r = recs[i];
-        const ref = `mockcall_instant_${camp.id.slice(0, 8)}_${i + 1}`;
-        await this.prisma.campaignRecipient.update({
-          where: { id: r.id },
-          data: {
-            status: 'COMPLETED',
-            providerRef: ref,
-            submittedAt: new Date(),
-            simulated: true,
-          },
-        });
-      }
-      await this.prisma.campaign.update({
-        where: { id: camp.id },
-        data: { status: 'COMPLETED', completedAt: new Date() },
-      });
-      await this.prisma.campaignStatusHistory.create({
-        data: { campaignId: camp.id, fromStatus: 'PROCESSING', toStatus: 'COMPLETED', actorId: actor.id, reason: 'All direct calls completed successfully' },
-      });
-    } else {
-      await enqueueOutbox(this.prisma, 'campaign.schedule', { campaignId: camp.id });
+    // 6. Real Twilio dispatch
+    const cfg = config();
+    const hasTwilio = Boolean(cfg.TWILIO_ACCOUNT_SID && cfg.TWILIO_AUTH_TOKEN && cfg.TWILIO_PHONE_NUMBER);
+    if (!hasTwilio) {
+      throw new BadRequestException('Telephony provider configuration was lost mid-request; nothing was dialed.');
     }
+
+    const providers = createProviders('PRODUCTION', '', {
+      accountSid: cfg.TWILIO_ACCOUNT_SID,
+      authToken: cfg.TWILIO_AUTH_TOKEN,
+      phoneNumber: cfg.TWILIO_PHONE_NUMBER,
+    });
+    const streamUrl = `https://commhub-api.onrender.com/api/audio/${audio.id}/stream`;
+    const recs = await this.prisma.campaignRecipient.findMany({ where: { campaignId: camp.id } });
+    let queued = 0;
+    for (const r of recs) {
+      const sub = await providers.voice.submitCall({
+        to: r.phoneE164,
+        audioUrl: streamUrl,
+        idempotencyKey: r.idempotencyKey,
+      });
+      if (sub.status === 'PROVIDER_ACCEPTED' || sub.status === 'SUBMITTED') queued++;
+      await this.prisma.campaignRecipient.update({
+        where: { id: r.id },
+        data: {
+          status: sub.status === 'PROVIDER_ACCEPTED' || sub.status === 'SUBMITTED' ? 'SUBMITTED' : 'FAILED',
+          providerRef: sub.providerRef || null,
+          submittedAt: new Date(),
+          simulated: false,
+          lastError: sub.error || null,
+        },
+      });
+    }
+    await this.prisma.campaign.update({
+      where: { id: camp.id },
+      data: { status: 'PROCESSING', startedAt: new Date(), simulated: false },
+    });
 
     await this.audit.log(actor, 'campaign.direct_sql_masscall', 'Campaign', camp.id, {
       totalFound: extracted.length,
       suppressedSkipped: suppressions.size,
-      called: eligible.length,
+      submitted: queued,
+      failed: eligible.length - queued,
       voiceNote: audio.title,
     });
 
     return {
-      success: true,
+      success: queued > 0,
       campaignId: camp.id,
       campaignName: camp.name,
       voiceNote: { id: audio.id, title: audio.title, durationSec: audio.durationSec },
       totalExtracted: extracted.length,
       suppressedSkipped: suppressions.size,
-      dispatchedCalls: eligible.length,
-      status: b.autoSimulate ? 'COMPLETED' : 'DISPATCHED_TO_QUEUE',
-      cost: '₹0.00 (100% Free - Simulation / Free Mock Mode)',
-      message: `Direct mass calls completed for ${eligible.length} numbers with voice note "${audio.title}". ₹0.00 charged!`,
+      dispatchedCalls: queued,
+      failedCalls: eligible.length - queued,
+      status: 'SUBMITTED_TO_PROVIDER',
+      message: `${queued} call request(s) accepted by the telephony provider (providers queue calls; acceptance is not proof of an answer). ${eligible.length - queued} request(s) failed. Recipients answered will hear "${audio.title}". Final outcomes appear in Reports as the provider reports them.`,
     };
   }
 }
